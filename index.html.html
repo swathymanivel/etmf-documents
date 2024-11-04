@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>ETMF Docs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+
+<body> 
+    <video autoplay loop muted play-inline class="back-video"> <source src="images/video1.mp4" type="video/mp4"></video>
+                <div class="display-area">
+                    <div class="container">
+                        <img  src="images/img1.png" width="150px" height="150px">
+                        <h2>ETMF DOCUMENTS</h2>
+                
+                        <input type="text" id="search-input" class="input-field" placeholder="Enter search term...">
+                        <button class="button" onclick="searchDocuments()">Search Documents</button>
+                        <div id="error-message" class="error-message"></div>
+                
+                        <!-- Table to display the results -->
+                        <table id="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Document Type</th>
+                                    <th>Document Subtypes</th>
+                                    <th>Document Classification</th>
+                                    <th>Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table rows will be inserted dynamically here -->
+                            </tbody>
+                        </table>
+                        <div id="document-count"></div>
+                        <div class="pagination" id="pagination">
+                            <button id="prev-page" onclick="prevPage()" disabled>Previous</button>
+                            <button id="next-page" onclick="nextPage()">Next</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Modal for displaying document names -->
+                <div class="modal" id="modal">
+                    <div class="modal-content">
+                        <span class="close-modal" onclick="closeModal()">&times;</span>
+                        <h3>Document Names</h3>
+                        <div id="modal-body">
+                            <!-- Document names will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <script>
+                    let sessionId = '';
+                    let documentMap = {};
+                    let currentPage = 1;
+                    const recordsPerPage = 15;
+                
+                    window.onload = performLogin;
+                
+                    async function performLogin() {
+                        const username = 'prana.user3@partnersi-prana4life.com';
+                        const password = 'Pr@n@U$er3!';
+                        const errorMessage = document.getElementById('error-message');
+                
+                        const formData = new URLSearchParams();
+                        formData.append('username', username);
+                        formData.append('password', password);
+                
+                        try {
+                            const loginResponse = await fetch(
+                                'https://cors-anywhere.herokuapp.com/https://partnersi-prana4life-clinical.veevavault.com/api/v24.1/auth',
+                                {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: formData,
+                                }
+                            );
+                
+                            if (!loginResponse.ok) {
+                                const errorText = await loginResponse.text();
+                                throw new Error(`Login failed: ${errorText}`);
+                            }
+                
+                            const loginData = await loginResponse.json();
+                            sessionId = loginData.sessionId;
+                        } catch (error) {
+                            errorMessage.innerText = error.message;
+                        }
+                    }
+                
+                    async function searchDocuments() {
+                        const query = document.getElementById('search-input').value.trim();
+                        const errorMessage = document.getElementById('error-message');
+                        const documentCount = document.getElementById('document-count');
+                        const dataTableBody = document.querySelector('tbody');
+                        const pagination = document.getElementById('pagination');
+                        const dataTable = document.getElementById('data-table');
+                
+                        if (!query) {
+                            errorMessage.innerText = 'Please enter a search term.';
+                            dataTableBody.innerHTML = '';
+                            dataTable.style.display = 'none';
+                            pagination.style.display = 'none';
+                            return;
+                        }
+                
+                        if (!sessionId) {
+                            errorMessage.innerText = 'You must log in first.';
+                            return;
+                        }
+                
+                        try {
+                            const apiUrl = `https://cors-anywhere.herokuapp.com/https://partnersi-prana4life-clinical.veevavault.com/api/v24.2/objects/documents?search=${encodeURIComponent(query)}&scope=all`;
+                
+                            const response = await fetch(apiUrl, {
+                                method: 'GET',
+                                headers: {
+                                    'Authorization': sessionId,
+                                    'Accept': 'application/json',
+                                },
+                            });
+                
+                            if (!response.ok) {
+                                throw new Error('Search failed. Please try again.');
+                            }
+                
+                            const data = await response.json();
+                
+                            if (!data.documents || !Array.isArray(data.documents)) {
+                                errorMessage.innerText = 'No documents found.';
+                                dataTableBody.innerHTML = '';
+                                dataTable.style.display = 'none';
+                                pagination.style.display = 'none';
+                                return;
+                            }
+                
+                            documentMap = {};
+                            for (const doc of data.documents) {
+                                const type = doc.document.type__v || 'Unknown';
+                                const subtype = doc.document.subtype__v || 'N/A';
+                                const classification = `${type}-${subtype}`;
+                                const name = doc.document.name__v || 'Untitled';
+                                const id = doc.document.id;
+                
+                                if (!documentMap[type]) {
+                                    documentMap[type] = { subtypes: [], names: [], classification };
+                                }
+                
+                                if (!documentMap[type].subtypes.includes(subtype)) {
+                                    documentMap[type].subtypes.push(subtype);
+                                }
+                
+                                documentMap[type].names.push({ name, id });
+                            }
+                
+                            currentPage = 1;
+                            errorMessage.innerText = '';
+                            documentCount.innerText = `Number of Available Documents: ${Object.keys(documentMap).length}`;
+                
+                            displayPage();
+                            pagination.style.display = 'flex';
+                
+                        } catch (error) {
+                            errorMessage.innerText = error.message;
+                        }
+                    }
+                
+                    function displayPage() {
+                        const dataTableBody = document.querySelector('#data-table tbody');
+                        const dataTable = document.getElementById('data-table');
+                        const types = Object.keys(documentMap);
+                        const startIndex = (currentPage - 1) * recordsPerPage;
+                        const endIndex = Math.min(startIndex + recordsPerPage, types.length);
+                
+                        dataTableBody.innerHTML = '';
+                
+                        for (let i = startIndex; i < endIndex; i++) {
+                            const type = types[i];
+                            const row = document.createElement('tr');
+                            row.innerHTML = `
+                                <td>${type}</td>
+                                <td>${documentMap[type].subtypes.join(', ')}</td>
+                                <td>${documentMap[type].classification}</td>
+                                <td><button class="document-button" onclick="openModal('${type}')">${documentMap[type].names.length}</button></td>
+                            `;
+                            dataTableBody.appendChild(row);
+                        }
+                
+                        document.getElementById('prev-page').disabled = currentPage === 1;
+                        document.getElementById('next-page').disabled = currentPage === Math.ceil(types.length / recordsPerPage);
+                
+                        dataTable.style.display = 'table';
+                    }
+                
+                    function openModal(type) {
+                        const modal = document.getElementById('modal');
+                        const modalBody = document.getElementById('modal-body');
+                
+                        modalBody.innerHTML = '';
+                        documentMap[type].names.forEach((doc) => {
+                            const button = document.createElement('button');
+                            button.className = 'document-button';
+                            button.textContent = doc.name;
+                            button.onclick = () => {
+                                window.open(`https://partnersi-prana4life-clinical.veevavault.com/ui/#doc_info/${doc.id}`, '_blank');
+                            };
+                            modalBody.appendChild(button);
+                        });
+                
+                        modal.style.display = 'flex';
+                    }
+                
+                    function closeModal() {
+                        document.getElementById('modal').style.display = 'none';
+                    }
+                
+                    function prevPage() {
+                        if (currentPage > 1) {
+                            currentPage--;
+                            displayPage();
+                        }
+                    }
+                
+                    function nextPage() {
+                        currentPage++;
+                        displayPage();
+                    }
+        </script>
+    </body>
+</html>
